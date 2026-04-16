@@ -1,4 +1,3 @@
-import os
 import sys
 import argparse
 import rand
@@ -6,8 +5,8 @@ import elfcheck
 import time
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-b','--binarypath', type=str, nargs='?', help='location of frida binary to patch (server or gadget)')
-parser.add_argument('-o','--output', type=str, nargs='?', help='output location for new binary')
+parser.add_argument('-b', '--binarypath', type=str, nargs='?', help='location of frida binary to patch (server or gadget)')
+parser.add_argument('-o', '--output', type=str, nargs='?', help='output location for new binary')
 
 args = parser.parse_args()
 exclusions = []
@@ -20,12 +19,15 @@ else:
 with open(frida_bin, 'rb') as f:
     data = bytearray(f.read())
 
+original_size = len(data)
+
 try:
     exclusions.append(data.index(b'/System/Library/Caches/') + len('/System'))
-except:
+except Exception:
     pass
 
-def find_and_replace(replacer, replacee = "", startpos = 0, endpos = 0):
+
+def find_and_replace(replacer, replacee="", startpos=0, endpos=0):
     match = replacer.encode('utf8')
     length = len(match)
     if replacee == '':
@@ -35,7 +37,7 @@ def find_and_replace(replacer, replacee = "", startpos = 0, endpos = 0):
         if len(val) > length:
             raise Exception('[-] input length is higher than required')
         else:
-            val += int.to_bytes(0, length - len(val), 'big')     
+            val += int.to_bytes(0, length - len(val), 'big')
     if endpos > 0:
         val = val[:-endpos]
     cur_index = 0
@@ -46,19 +48,11 @@ def find_and_replace(replacer, replacee = "", startpos = 0, endpos = 0):
             cur_index = index + 1
             if index in exclusions:
                 continue
-        except:
+        except Exception:
             break
-        data[index + startpos : index + length - endpos] = val
+        data[index + startpos: index + length - endpos] = val
         print("[*] patching: " + replacer + " at: " + str(hex(index)) + " with: " + val.decode("utf8"))
 
-def verify_exported_binary(path):
-    if elfcheck.is_binary_elf(path):
-        try:
-            elfcheck.check_binary_information(path + "-modified")
-        except:
-            raise Exception('[-] binary verification failed, corrupted output!!')
-    else:
-        print ("\n[*] skipping binary checks, reason: NOT_ELF_BINARY")
 
 frida_string_to_patch = [
     "linjector",
@@ -83,13 +77,17 @@ for value in frida_string_to_patch:
     find_and_replace(value)
     time.sleep(0.5)
 
-find_and_replace('\"frida\"', startpos=1, endpos=1)
+find_and_replace('"frida"', startpos=1, endpos=1)
 
-if args.output:
-    bin_name = str(args.output)
-else:
-    bin_name = '%s-modified' % frida_bin
+bin_name = args.output if args.output else '%s-modified' % frida_bin
 
 with open(bin_name, 'wb') as f:
     f.write(data)
-    verify_exported_binary(args.binarypath)
+
+# Verify output size matches input (same-length replacements must not change size)
+if len(data) != original_size:
+    raise Exception("Size mismatch: input=%d output=%d" % (original_size, len(data)))
+print("[*] size check: %d bytes OK" % len(data))
+
+# Verify ELF structure of the patched binary
+elfcheck.validate_binary(bin_name)

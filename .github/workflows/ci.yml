@@ -32,7 +32,8 @@ jobs:
         run: |
           FILE="frida-gadget-${{ env.FRIDA_VERSION }}-android-arm64.so"
           URL="https://github.com/frida/frida/releases/download/${{ env.FRIDA_VERSION }}/$FILE.xz"
-          curl -L $URL | xz -d > $FILE
+          curl -fL $URL -o $FILE.xz || { echo "Download failed for $FILE.xz"; exit 1; }
+          xz -d $FILE.xz
           sha256sum $FILE
           python src/frida-patcher.py -b $FILE -o out_dir/$FILE
           sha256sum out_dir/$FILE
@@ -42,7 +43,8 @@ jobs:
         run: |
           FILE="frida-gadget-${{ env.FRIDA_VERSION }}-android-arm.so"
           URL="https://github.com/frida/frida/releases/download/${{ env.FRIDA_VERSION }}/$FILE.xz"
-          curl -L $URL | xz -d > $FILE
+          curl -fL $URL -o $FILE.xz || { echo "Download failed for $FILE.xz"; exit 1; }
+          xz -d $FILE.xz
           sha256sum $FILE
           python src/frida-patcher.py -b $FILE -o out_dir/$FILE
           sha256sum out_dir/$FILE

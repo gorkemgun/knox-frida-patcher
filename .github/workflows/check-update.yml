@@ -1,0 +1,49 @@
+name: Check Frida Updates
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest Frida release
+        id: frida
+        run: |
+          LATEST=$(curl -s https://api.github.com/repos/frida/frida/releases/latest | jq -r '.tag_name')
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Failed to fetch latest Frida version"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Latest Frida: $LATEST"
+          fi
+
+      - name: Check if already built
+        if: steps.frida.outputs.skip == 'false'
+        id: check
+        run: |
+          if git tag -l | grep -q "^${{ steps.frida.outputs.version }}$"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.frida.outputs.version }} already exists"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "New version: ${{ steps.frida.outputs.version }}"
+          fi
+
+      - name: Create tag for new version
+        if: steps.frida.outputs.skip == 'false' && steps.check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.frida.outputs.version }}
+          git push origin ${{ steps.frida.outputs.version }}
