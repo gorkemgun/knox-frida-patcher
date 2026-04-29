@@ -10,17 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.WORKFLOW_PAT }}
+
       - name: Get latest Frida release
         id: frida
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-      
+
           http_code=$(
             curl -sSL \
               -H "Accept: application/vnd.github+json" \
@@ -30,42 +33,38 @@ jobs:
               -w "%{http_code}" \
               https://api.github.com/repos/frida/frida/releases/latest
           )
-      
+
           if [ "$http_code" != "200" ]; then
-            echo "GitHub API failed: HTTP $http_code"
-            cat response.json
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            cat response.json
             exit 0
           fi
-      
+
           LATEST=$(jq -r '.tag_name // empty' response.json)
-      
+
           if [ -z "$LATEST" ]; then
-            echo "tag_name not found"
-            cat response.json
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "version=$LATEST" >> "$GITHUB_OUTPUT"
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Latest Frida: $LATEST"
           fi
 
       - name: Check if already built
         if: steps.frida.outputs.skip == 'false'
         id: check
         run: |
-          if git tag -l | grep -q "^${{ steps.frida.outputs.version }}$"; then
+          set -euo pipefail
+          if git tag -l | grep -qx "${{ steps.frida.outputs.version }}"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Tag ${{ steps.frida.outputs.version }} already exists"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "New version: ${{ steps.frida.outputs.version }}"
           fi
 
       - name: Create tag for new version
         if: steps.frida.outputs.skip == 'false' && steps.check.outputs.exists == 'false'
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.frida.outputs.version }}
-          git push origin ${{ steps.frida.outputs.version }}
+          git tag "${{ steps.frida.outputs.version }}"
+          git push origin "${{ steps.frida.outputs.version }}"
